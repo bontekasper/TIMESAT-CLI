@@ -1,6 +1,7 @@
 from __future__ import annotations
 import math, os, datetime
 from typing import List, Tuple
+import calendar
 
 import numpy as np
 import rasterio
@@ -16,18 +17,46 @@ from timesat_cli.parallel import maybe_init_ray
 VPP_NAMES = ["SOSD","SOSV","LSLOPE","EOSD","EOSV","RSLOPE","LENGTH",
              "MINV","MAXD","MAXV","AMPL","TPROD","SPROD"]
 
-def _build_output_filenames(st_folder: str, vpp_folder: str, p_outindex, yrstart: int, yrend: int):
-    outyfitfn = []
-    for i_tv in p_outindex:
-        yfitdate = datetime.date(yrstart, 1, 1) + datetime.timedelta(days=int(i_tv)) - datetime.timedelta(days=1)
-        outyfitfn.append(os.path.join(st_folder, f"TIMESAT_{yfitdate.strftime('%Y%m%d')}.tif"))
 
-    outvppfn = []
-    for i_yr in range(yrstart, yrend + 1):
-        for i_seas in range(2):
-            for name in VPP_NAMES:
-                outvppfn.append(os.path.join(vpp_folder, f"TIMESAT_{name}_{i_yr}_season_{i_seas+1}.tif"))
-    outnsfn = os.path.join(vpp_folder, 'TIMESAT_nsperyear.tif')
+def _build_output_filenames(start_date: datetime.date | datetime.datetime,
+                            st_folder: str, vpp_folder: str, p_outindex,
+                            yrstart: int, yrend: int):
+    VPP_NAMES = ["SOSD", "SOSV", "LSLOPE", "EOSD", "EOSV", "RSLOPE", "LENGTH",
+                 "MINV", "MAXD", "MAXV", "AMPL", "TPROD", "SPROD"]
+    outyfitfn = []
+    if isinstance(start_date, datetime.datetime):
+        start_date_only = start_date.date()
+    else:
+        start_date_only = start_date
+    for i_tv in p_outindex:
+        # base tentative date (preserve original -1 behavior)
+        dt = datetime.date(yrstart, 1, 1) + datetime.timedelta(days=int(i_tv))
+
+        # account for leap days that were subtracted when building p_outindex
+        leap_days = 0
+        for y_leap in range(start_date_only.year, dt.year + 1):
+            if calendar.isleap(y_leap):
+                dec31 = datetime.date(y_leap, 12, 31)
+                # leap day should be subtracted as soon
+                # as leap year is fully passed
+                if start_date_only < dec31 <= dt:
+                    leap_days += 1
+
+        yfitdate = dt + datetime.timedelta(days=leap_days) - datetime.timedelta(days=1)
+        yfit_name = yfitdate.strftime("%Y%m%d")
+        outyfitfn.append(
+            os.path.join(st_folder, f"TIMESAT_{yfit_name}.tif")
+        )
+
+        outvppfn = []
+        for i_yr in range(yrstart, yrend + 1):
+            for i_seas in range(2):
+                season = i_seas + 1
+                for name in VPP_NAMES:
+                    fname = f"TIMESAT_{name}_{i_yr}_season_{season}.tif"
+                    outvppfn.append(os.path.join(vpp_folder, fname))
+
+        outnsfn = os.path.join(vpp_folder, "TIMESAT_nsperyear.tif")
     return outyfitfn, outvppfn, outnsfn
 
 
