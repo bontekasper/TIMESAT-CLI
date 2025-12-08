@@ -210,3 +210,46 @@ def run(jsfile: str) -> None:
         write_st_layers(outyfitfn, yfit, window, img_profile_st)
 
         print(f'Block: {iblock + 1}/{num_block}  finishedtime: {datetime.datetime.now()}')
+
+
+def get_month_dekad_offsets(
+    yr_start: int, yr_end: int, start_dt: datetime.datetime,
+    ignore_buffer_years: bool = True
+) -> np.ndarray:
+    """Return sorted unique day-offsets (0-based) from start_dt for days 1, 11 and 21 of each month.
+
+    Offsets are the number of days since `start_dt` (period start). Offsets that fall
+    before `start_dt` are ignored. The caller should match these offsets against the
+    actual `p_outindex` array.
+    Requires `import datetime` and `import numpy as np` in scope.
+    If ignore_buffer_years is True, the function will skip the buffer years
+    """
+    offsets = []
+    start_date_only = (
+        start_dt.date() if isinstance(start_dt, datetime.datetime) else start_dt
+    )
+    for yy in range(yr_start, yr_end + 1):
+        if ignore_buffer_years and (yy == yr_start or yy == yr_end):
+            continue
+        for mm in range(1, 13):
+            for dd in (1, 11, 21):
+                try:
+                    dt = datetime.date(yy, mm, dd)
+                except ValueError:
+                    # defensive: shouldn't occur for days 1,11,21 but keep safe
+                    continue
+
+                leap_days = 0
+                for y_leap in range(start_date_only.year, dt.year + 1):
+                    if calendar.isleap(y_leap):
+                        dec31 = datetime.date(y_leap, 12, 31)
+                        # leap day should be substracted as soon
+                        # as leap year is fully passed
+                        if start_date_only < dec31 <= dt:
+                            leap_days += 1
+
+                off = (dt - start_date_only).days - leap_days
+                
+                if off >= 0:
+                    offsets.append(off)
+    return np.array(sorted(set(offsets)), dtype=int)
